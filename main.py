@@ -1,20 +1,16 @@
-from __future__ import annotations
+from fastapi import FastAPI
+from database import init_db, add_user, list_users
 
-from database import add_user, init_db, list_users
+app = FastAPI()
 
-
-def main() -> None:
+@app.on_event("startup")
+def startup_event():
     init_db()
 
-    users = list_users()
-    if not users:
-        add_user("Admin", "admin@example.com")
-        users = list_users()
+@app.get("/")
+def read_root():
+    return {"message": "Grizzly Server is running!"}
 
-    print("Users in database:")
-    for user_id, name, email in users:
-        print(f"- {user_id}: {name} <{email}>")
-
-
-if __name__ == "__main__":
-    main()
+@app.get("/users")
+def get_users():
+    return list_users()
