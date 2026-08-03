@@ -121,32 +121,62 @@ def read_root():
 
 @app.post("/api/events")
 async def create_event(request: Request):
-    """Створити новий подію (подання від охоронця)"""
     try:
         body = await request.json()
-        
+
         event_type = body.get("type", body.get("Type", "unknown"))
-        object_id = body.get("object_id", body.get("ObjectId"))
+        object_id   = body.get("object_id",   body.get("ObjectId"))
         employee_id = body.get("employee_id", body.get("EmployeeId"))
-        dispatcher = body.get("dispatcher", body.get("Dispatcher", "system"))
+        dispatcher  = body.get("dispatcher",  body.get("Dispatcher", "system"))
         description = body.get("description", body.get("Description", ""))
-        status = body.get("status", body.get("Status", "pending"))
-        
+        status      = body.get("status",      body.get("Status", "pending"))
+        now = datetime.utcnow().isoformat()
+
         with get_connection() as conn:
+            # Зберігаємо подію
             cursor = conn.cursor()
             cursor.execute(
-                """
-                INSERT INTO events (datetime, type, object_id, employee_id, dispatcher, description, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (datetime.utcnow().isoformat(), event_type, object_id, employee_id, dispatcher, description, status)
+                "INSERT INTO events (datetime, type, object_id, employee_id, dispatcher, description, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+                (now, event_type, object_id, employee_id, dispatcher, description, status)
             )
+            event_id = cursor.lastrowid
+
+            # Автоматичне управління змінами за типом події
+            if event_type == "Заступив на зміну" and employee_id is not None:
+                # Знаходимо post_id для об'єкта (якщо є)
+                post_id = None
+                if object_id is not None:
+                    row = conn.execute(
+                        "SELECT id FROM posts WHERE object_id = ? ORDER BY id LIMIT 1", (object_id,)
+                    ).fetchone()
+                    if row:
+                        post_id = row[0]
+
+                # Закриваємо попередню незакриту зміну цього охоронця
+                conn.execute(
+                    "UPDATE shifts SET actual_end = ?, status = 'completed' WHERE employee_id = ? AND status = 'active' AND actual_end IS NULL",
+                    (now, employee_id)
+                )
+                # Створюємо нову зміну
+                conn.execute(
+                    "INSERT INTO shifts (post_id, employee_id, planned_start, actual_start, status) VALUES (?, ?, ?, ?, 'active')",
+                    (post_id, employee_id, now, now)
+                )
+
+            elif event_type == "Здав зміну" and employee_id is not None:
+                conn.execute(
+                    "UPDATE shifts SET actual_end = ?, status = 'completed' WHERE employee_id = ? AND status = 'active' AND actual_end IS NULL",
+                    (now, employee_id)
+                )
+
+            elif event_type == "Контрольна доповідь" and employee_id is not None:
+                conn.execute(
+                    "UPDATE shifts SET next_control_time = ? WHERE employee_id = ? AND status = 'active' AND actual_end IS NULL",
+                    (now, employee_id)
+                )
+
             conn.commit()
-            return {
-                "success": True,
-                "event_id": cursor.lastrowid,
-                "message": "Event created successfully"
-            }
+            return {"success": True, "event_id": event_id}
     except HTTPException:
         raise
     except Exception as e:
