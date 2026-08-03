@@ -2,10 +2,66 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from datetime import datetime
-import json
+from typing import Any
 import sqlite3
-import os
+import logging
 from database import init_db, get_connection
+
+
+logger = logging.getLogger("grizzly.api")
+
+
+def _coerce_param_value(value: Any) -> Any:
+    """Convert common string payload values into DB-friendly Python values."""
+    if value is None:
+        return None
+
+    if isinstance(value, str):
+        trimmed = value.strip()
+        if trimmed == "":
+            return None
+
+        lowered = trimmed.lower()
+        if lowered in {"true", "false"}:
+            return lowered == "true"
+        if lowered in {"null", "none"}:
+            return None
+
+        try:
+            if "." in trimmed:
+                return float(trimmed)
+            return int(trimmed)
+        except ValueError:
+            return trimmed
+
+    return value
+
+
+def _normalize_parameters(parameters: Any) -> Any:
+    """Support positional params and named params with/without @/:/$ prefix."""
+    if parameters is None:
+        return []
+
+    if isinstance(parameters, (list, tuple)):
+        return [_coerce_param_value(item) for item in parameters]
+
+    if isinstance(parameters, dict):
+        normalized: dict[str, Any] = {}
+        for raw_key, raw_value in parameters.items():
+            key = str(raw_key)
+            value = _coerce_param_value(raw_value)
+
+            normalized[key] = value
+
+            stripped = key.lstrip("@:$")
+            normalized[stripped] = value
+            normalized[f"@{stripped}"] = value
+            normalized[f":{stripped}"] = value
+            normalized[f"${stripped}"] = value
+
+        return normalized
+
+    raise HTTPException(status_code=400, detail="Parameters must be an object, array, or null")
 
 # Асинхронне ініціалізування при запуску
 @asynccontextmanager
@@ -91,48 +147,62 @@ async def create_event(request: Request):
                 "event_id": cursor.lastrowid,
                 "message": "Event created successfully"
             }
+    except HTTPException:
+        raise
     except Exception as e:
-        return {"success": False, "error": str(e)}, 500
+        logger.exception("create_event failed")
+        raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== DATABASE API ====================
 
 @app.post("/api/db/query")
 async def db_query(request: Request):
     """Виконати SELECT запит до БД"""
+    sql = ""
+    parameters = None
     try:
         body = await request.json()
         sql = body.get("sql", "")
-        parameters = body.get("parameters", {})
+        parameters = body.get("parameters")
         
         if not sql:
             raise HTTPException(status_code=400, detail="SQL query is required")
         
+        normalized_parameters = _normalize_parameters(parameters)
+
         with get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
             
-            cursor.execute(sql, parameters if parameters else [])
+            cursor.execute(sql, normalized_parameters)
             rows = cursor.fetchall()
             result = [dict(row) for row in rows]
             return {"rows": result}
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.exception("db_query failed: sql=%r parameters=%r", sql, parameters)
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/db/execute")
 async def db_execute(request: Request):
     """Виконати INSERT/UPDATE/DELETE команду до БД"""
+    sql = ""
+    parameters = None
     try:
         body = await request.json()
         sql = body.get("sql", "")
-        parameters = body.get("parameters", {})
+        parameters = body.get("parameters")
         
         if not sql:
             raise HTTPException(status_code=400, detail="SQL query is required")
         
+        normalized_parameters = _normalize_parameters(parameters)
+
         with get_connection() as conn:
             cursor = conn.cursor()
             
-            cursor.execute(sql, parameters if parameters else [])
+            cursor.execute(sql, normalized_parameters)
             conn.commit()
             
             return {
@@ -140,7 +210,10 @@ async def db_execute(request: Request):
                 "rows_affected": cursor.rowcount,
                 "message": "Query executed successfully"
             }
+    except HTTPException:
+        raise
     except Exception as e:
+        logger.exception("db_execute failed: sql=%r parameters=%r", sql, parameters)
         raise HTTPException(status_code=500, detail=str(e))
 
 # ==================== USERS API ====================
@@ -181,6 +254,8 @@ async def create_user(request: Request):
                 "user_id": cursor.lastrowid,
                 "message": "User created successfully"
             }
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
@@ -261,4 +336,6 @@ async def create_location_ping(request: Request):
                 "message": "Location ping recorded successfully"
             }
     except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
         raise HTTPException(status_code=500, detail=str(e))
