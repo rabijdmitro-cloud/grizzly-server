@@ -249,18 +249,45 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS phone_webhook_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                datetime TEXT,
+                general_call_id TEXT,
+                pbx_number TEXT,
+                external_number TEXT,
+                call_type TEXT,
+                company_id TEXT,
+                additional_data TEXT,
+                object_id INTEGER,
+                employee_id INTEGER,
+                action_code TEXT,
+                action_name TEXT,
+                status TEXT,
+                raw_payload TEXT
+            )
+            """
+        )
 
         # Legacy schema upgrade path for old app.db files.
         _ensure_column(conn, "objects", "contract_id", "INTEGER")
+        _ensure_column(conn, "objects", "subdivision", "TEXT")
+        _ensure_column(conn, "objects", "dfo", "TEXT")
         _ensure_column(conn, "objects", "full_name", "TEXT")
         _ensure_column(conn, "objects", "work_conditions", "TEXT")
         _ensure_column(conn, "objects", "date_start", "TEXT")
         _ensure_column(conn, "objects", "date_end", "TEXT")
+        _ensure_column(conn, "objects", "direction", "TEXT")
+        _ensure_column(conn, "objects", "security_chief", "TEXT")
         _ensure_column(conn, "objects", "guard_work_mode", "TEXT")
         _ensure_column(conn, "objects", "salary_rate", "REAL")
         _ensure_column(conn, "objects", "temporary_object", "TEXT")
         _ensure_column(conn, "objects", "fixed_salary", "REAL")
         _ensure_column(conn, "objects", "edrpou", "TEXT")
+        _ensure_column(conn, "objects", "call_import_code", "TEXT")
+        _ensure_column(conn, "objects", "address", "TEXT")
+        _ensure_column(conn, "objects", "external_code", "TEXT")
         _ensure_column(conn, "objects", "coordinates", "TEXT")
         _ensure_column(conn, "objects", "type", "TEXT")
         _ensure_column(conn, "objects", "chief", "TEXT")
@@ -274,9 +301,28 @@ def init_db() -> None:
         _ensure_column(conn, "objects", "active_alert", "TEXT")
 
         _ensure_column(conn, "employees", "position", "TEXT")
+        _ensure_column(conn, "employees", "subdivision", "TEXT")
+        _ensure_column(conn, "employees", "dfo", "TEXT")
+        _ensure_column(conn, "employees", "status", "TEXT")
+        _ensure_column(conn, "employees", "phone", "TEXT")
         _ensure_column(conn, "employees", "documents", "TEXT")
         _ensure_column(conn, "employees", "qualifications", "TEXT")
+        _ensure_column(conn, "employees", "rate", "TEXT")
         _ensure_column(conn, "employees", "external_code", "TEXT")
+
+        _ensure_column(conn, "phone_webhook_log", "datetime", "TEXT")
+        _ensure_column(conn, "phone_webhook_log", "general_call_id", "TEXT")
+        _ensure_column(conn, "phone_webhook_log", "pbx_number", "TEXT")
+        _ensure_column(conn, "phone_webhook_log", "external_number", "TEXT")
+        _ensure_column(conn, "phone_webhook_log", "call_type", "TEXT")
+        _ensure_column(conn, "phone_webhook_log", "company_id", "TEXT")
+        _ensure_column(conn, "phone_webhook_log", "additional_data", "TEXT")
+        _ensure_column(conn, "phone_webhook_log", "object_id", "INTEGER")
+        _ensure_column(conn, "phone_webhook_log", "employee_id", "INTEGER")
+        _ensure_column(conn, "phone_webhook_log", "action_code", "TEXT")
+        _ensure_column(conn, "phone_webhook_log", "action_name", "TEXT")
+        _ensure_column(conn, "phone_webhook_log", "status", "TEXT")
+        _ensure_column(conn, "phone_webhook_log", "raw_payload", "TEXT")
         conn.commit()
 
 
