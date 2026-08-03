@@ -162,8 +162,11 @@ async def db_query(request: Request):
     parameters = None
     try:
         body = await request.json()
-        sql = body.get("sql", "")
-        parameters = body.get("parameters")
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Request body must be a JSON object")
+
+        sql = body.get("sql", body.get("Sql", ""))
+        parameters = body.get("parameters", body.get("Parameters"))
         
         if not sql:
             raise HTTPException(status_code=400, detail="SQL query is required")
@@ -191,8 +194,11 @@ async def db_execute(request: Request):
     parameters = None
     try:
         body = await request.json()
-        sql = body.get("sql", "")
-        parameters = body.get("parameters")
+        if not isinstance(body, dict):
+            raise HTTPException(status_code=400, detail="Request body must be a JSON object")
+
+        sql = body.get("sql", body.get("Sql", ""))
+        parameters = body.get("parameters", body.get("Parameters"))
         
         if not sql:
             raise HTTPException(status_code=400, detail="SQL query is required")
