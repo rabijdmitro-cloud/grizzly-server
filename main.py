@@ -263,18 +263,29 @@ async def create_user(request: Request):
 
 @app.get("/reports")
 def get_reports(limit: int = 200):
-    """Отримати звіти про подіїи"""
     try:
-        # Обмежуємо максимум 1000
-        if limit > 1000:
-            limit = 1000
-            
+        limit = min(limit, 1000)
         with get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute("SELECT * FROM events ORDER BY datetime DESC LIMIT ?", (limit,))
-            events = [dict(row) for row in cursor.fetchall()]
-            return {"data": events}
+            # Повертаємо поля з назвами які очікує Windows EXE
+            cursor.execute("""
+                SELECT
+                    e.id            AS external_id,
+                    e.datetime      AS datetime,
+                    e.type          AS entity_type,
+                    COALESCE(o.name, CAST(e.object_id AS TEXT), '')   AS object_name,
+                    COALESCE(emp.full_name, CAST(e.employee_id AS TEXT), '') AS employee_name,
+                    e.dispatcher    AS client_name,
+                    e.description   AS description,
+                    e.status        AS status
+                FROM events e
+                LEFT JOIN objects  o   ON o.id   = e.object_id
+                LEFT JOIN employees emp ON emp.id = e.employee_id
+                ORDER BY e.datetime DESC
+                LIMIT ?
+            """, (limit,))
+            return {"data": [dict(row) for row in cursor.fetchall()]}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
