@@ -205,6 +205,17 @@ async def db_execute(request: Request):
         
         normalized_parameters = _normalize_parameters(parameters)
 
+        normalized_sql = " ".join(sql.strip().lower().split())
+        if normalized_sql.startswith("insert into employees") and isinstance(normalized_parameters, dict):
+            full_name_value = None
+            for key in ("full_name", "@full_name", ":full_name", "$full_name"):
+                if key in normalized_parameters:
+                    full_name_value = normalized_parameters.get(key)
+                    break
+
+            if full_name_value is None or str(full_name_value).strip() == "":
+                raise HTTPException(status_code=400, detail="employees.full_name is required")
+
         with get_connection() as conn:
             cursor = conn.cursor()
             
@@ -216,6 +227,8 @@ async def db_execute(request: Request):
                 "rows_affected": cursor.rowcount,
                 "message": "Query executed successfully"
             }
+    except sqlite3.IntegrityError as e:
+        raise HTTPException(status_code=400, detail=str(e))
     except HTTPException:
         raise
     except Exception as e:
@@ -353,6 +366,4 @@ async def create_location_ping(request: Request):
                 "message": "Location ping recorded successfully"
             }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
         raise HTTPException(status_code=500, detail=str(e))
