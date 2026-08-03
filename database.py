@@ -22,6 +22,39 @@ def init_db() -> None:
         )
         conn.execute(
             """
+            CREATE TABLE IF NOT EXISTS objects (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL UNIQUE,
+                subdivision TEXT,
+                dfo TEXT,
+                direction TEXT,
+                security_chief TEXT,
+                address TEXT,
+                call_import_code TEXT,
+                external_code TEXT,
+                full_name TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS employees (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                full_name TEXT NOT NULL,
+                position TEXT,
+                subdivision TEXT,
+                dfo TEXT,
+                status TEXT,
+                phone TEXT,
+                documents TEXT,
+                qualifications TEXT,
+                rate TEXT,
+                external_code TEXT
+            )
+            """
+        )
+        conn.execute(
+            """
             CREATE TABLE IF NOT EXISTS events (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 datetime TEXT NOT NULL,
@@ -30,7 +63,9 @@ def init_db() -> None:
                 employee_id INTEGER,
                 dispatcher TEXT,
                 description TEXT,
-                status TEXT DEFAULT 'pending'
+                status TEXT DEFAULT 'pending',
+                FOREIGN KEY(object_id) REFERENCES objects(id),
+                FOREIGN KEY(employee_id) REFERENCES employees(id)
             )
             """
         )
