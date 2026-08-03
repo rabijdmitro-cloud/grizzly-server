@@ -20,6 +20,20 @@ def init_db() -> None:
             )
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS events (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                datetime TEXT NOT NULL,
+                type TEXT NOT NULL,
+                object_id INTEGER,
+                employee_id INTEGER,
+                dispatcher TEXT,
+                description TEXT,
+                status TEXT DEFAULT 'pending'
+            )
+            """
+        )
         conn.commit()
 
 
