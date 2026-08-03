@@ -1,4 +1,4 @@
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from datetime import datetime
@@ -64,44 +64,17 @@ def read_root():
 # ==================== EVENTS API ====================
 
 @app.post("/api/events")
-def create_event(
-    type: str = Query(...),
-    object_id: int = Query(...),
-    employee_id: int = Query(...),
-    dispatcher: str = Query(...),
-    description: str = Query(""),
-    status: str = Query("pending")
-):
+async def create_event(request: Request):
     """Створити новий подію (подання від охоронця)"""
     try:
-        with get_connection() as conn:
-            cursor = conn.cursor()
-            cursor.execute(
-                """
-                INSERT INTO events (datetime, type, object_id, employee_id, dispatcher, description, status)
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (datetime.utcnow().isoformat(), type, object_id, employee_id, dispatcher, description, status)
-            )
-            conn.commit()
-            return {
-                "success": True,
-                "event_id": cursor.lastrowid,
-                "message": "Event created successfully"
-            }
-    except Exception as e:
-        return {"success": False, "error": str(e)}, 500
-
-@app.post("/api/events")
-async def create_event_json(body: dict):
-    """Створити новий подію (JSON варіант)"""
-    try:
-        event_type = body.get("type", "unknown")
-        object_id = body.get("object_id")
-        employee_id = body.get("employee_id")
-        dispatcher = body.get("dispatcher", "system")
-        description = body.get("description", "")
-        status = body.get("status", "pending")
+        body = await request.json()
+        
+        event_type = body.get("type", body.get("Type", "unknown"))
+        object_id = body.get("object_id", body.get("ObjectId"))
+        employee_id = body.get("employee_id", body.get("EmployeeId"))
+        dispatcher = body.get("dispatcher", body.get("Dispatcher", "system"))
+        description = body.get("description", body.get("Description", ""))
+        status = body.get("status", body.get("Status", "pending"))
         
         with get_connection() as conn:
             cursor = conn.cursor()
@@ -119,14 +92,15 @@ async def create_event_json(body: dict):
                 "message": "Event created successfully"
             }
     except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        return {"success": False, "error": str(e)}, 500
 
 # ==================== DATABASE API ====================
 
 @app.post("/api/db/query")
-async def db_query(body: dict):
+async def db_query(request: Request):
     """Виконати SELECT запит до БД"""
     try:
+        body = await request.json()
         sql = body.get("sql", "")
         parameters = body.get("parameters", {})
         
@@ -136,20 +110,19 @@ async def db_query(body: dict):
         with get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
-            cursor.execute(sql, parameters)
+            
+            cursor.execute(sql, parameters if parameters else [])
             rows = cursor.fetchall()
-            
-            # Перетворити на список dict'ів
             result = [dict(row) for row in rows]
-            
-            return {"data": result, "count": len(result)}
+            return {"rows": result}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/db/execute")
-async def db_execute(body: dict):
+async def db_execute(request: Request):
     """Виконати INSERT/UPDATE/DELETE команду до БД"""
     try:
+        body = await request.json()
         sql = body.get("sql", "")
         parameters = body.get("parameters", {})
         
@@ -158,7 +131,8 @@ async def db_execute(body: dict):
         
         with get_connection() as conn:
             cursor = conn.cursor()
-            cursor.execute(sql, parameters)
+            
+            cursor.execute(sql, parameters if parameters else [])
             conn.commit()
             
             return {
@@ -185,9 +159,10 @@ def get_users():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/users")
-async def create_user(body: dict):
+async def create_user(request: Request):
     """Створити нового користувача"""
     try:
+        body = await request.json()
         name = body.get("name", "")
         email = body.get("email", "")
         
@@ -212,9 +187,13 @@ async def create_user(body: dict):
 # ==================== REPORTS API ====================
 
 @app.get("/reports")
-def get_reports(limit: int = Query(200, le=1000)):
+def get_reports(limit: int = 200):
     """Отримати звіти про подіїи"""
     try:
+        # Обмежуємо максимум 1000
+        if limit > 1000:
+            limit = 1000
+            
         with get_connection() as conn:
             conn.row_factory = sqlite3.Row
             cursor = conn.cursor()
@@ -227,12 +206,13 @@ def get_reports(limit: int = Query(200, le=1000)):
 # ==================== ALARMS API ====================
 
 @app.post("/api/alarms")
-async def create_alarm(body: dict):
+async def create_alarm(request: Request):
     """Створити сигнал тривоги"""
     try:
-        object_id = body.get("object_id")
-        dispatcher = body.get("dispatcher", "system")
-        description = body.get("description", "Alarm triggered")
+        body = await request.json()
+        object_id = body.get("object_id", body.get("ObjectId"))
+        dispatcher = body.get("dispatcher", body.get("Dispatcher", "system"))
+        description = body.get("description", body.get("Description", "Alarm triggered"))
         
         # Просто логуємо як подію тривоги
         with get_connection() as conn:
@@ -256,12 +236,13 @@ async def create_alarm(body: dict):
 # ==================== LOCATION PINGS ====================
 
 @app.post("/api/location-pings")
-async def create_location_ping(body: dict):
+async def create_location_ping(request: Request):
     """Зберегти геолокацію охоронця"""
     try:
-        employee_id = body.get("employee_id")
-        lat = body.get("lat")
-        lon = body.get("lon")
+        body = await request.json()
+        employee_id = body.get("employee_id", body.get("EmployeeId"))
+        lat = body.get("lat", body.get("Lat"))
+        lon = body.get("lon", body.get("Lon"))
         
         # Логуємо як подію локації
         with get_connection() as conn:
